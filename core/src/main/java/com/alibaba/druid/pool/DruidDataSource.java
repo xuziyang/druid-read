@@ -3358,11 +3358,13 @@ public class DruidDataSource extends DruidAbstractDataSource
      *   连接池的瘦身针对的是空闲连接，空闲连接保持在connections数组中
      *
      *   因为每次从connections中获取连接，和规范连接，都是在connections数组的尾部进行，
-     *   所以connections中的连接天然就是按照lastActiveTimeMillis进行排序的
+     *   所以connections中的连接天然就是按照活跃程度进行排序的
      *
      *
      * @param checkTime 为true时，表示由DestroyTask任务触发，对连接池的连接进行周期性检测
-     * @param keepAlive 是否开启keepAlive, 默认关闭，当开启时：会对空闲时间 >=  keepAliveBetweenTimeMillis的连接，进行可用性检测，检测通过则放回连接中，反之则关闭该连接
+     * @param keepAlive 是否开启keepAlive, 默认关闭，
+     *                  当开启时：会对空闲时间 >=  keepAliveBetweenTimeMillis的连接，进行可用性检测，检测通过则放回连接中，反之则关闭该连接,
+     *                  开启keepAlive还会保证连接池中的连接数 >= minIdle
      */
     public void shrink(boolean checkTime, boolean keepAlive) {
         final Lock lock = this.lock;
@@ -3418,24 +3420,29 @@ public class DruidDataSource extends DruidAbstractDataSource
                     // 计算连接的空闲时长
                     long idleMillis = currentTimeMillis - connection.lastActiveTimeMillis;
 
+                    // 无需连接检测
                     if (idleMillis < minEvictableIdleTimeMillis
                             && idleMillis < keepAliveBetweenTimeMillis
                     ) {
                         break;
                     }
 
+                    // 空闲时间 >= 最小空闲时间(默认30分钟)
                     if (idleMillis >= minEvictableIdleTimeMillis) {
                         if (checkTime && i < checkCount) {
                             evictConnections[evictCount++] = connection;
                             connectionsFlag[i] = true;
                             continue;
-                        } else if (idleMillis > maxEvictableIdleTimeMillis) {
+                        }
+                        // 如果空闲时间 > 最大空闲时间（默认7个小时）加入evictConnections，随后关闭
+                        else if (idleMillis > maxEvictableIdleTimeMillis) {
                             evictConnections[evictCount++] = connection;
                             connectionsFlag[i] = true;
                             continue;
                         }
                     }
 
+                    // 开始keepAlive（默认false）, 并且空闲时间 >= keepAliveBetweenTimeMillis(默认2分钟） 则放入keepAliveConnections容器，随后对其进行可用性检测
                     if (keepAlive && idleMillis >= keepAliveBetweenTimeMillis) {
                         keepAliveConnections[keepAliveCount++] = connection;
                         connectionsFlag[i] = true;
@@ -3450,6 +3457,7 @@ public class DruidDataSource extends DruidAbstractDataSource
                 }
             }
 
+            // 下面这段代码，执行的效果是，将加入evictConnection和keepAliveConnections容器的线程，从connections容器中移除
             int removeCount = evictCount + keepAliveCount;
             if (removeCount > 0) {
                 int remaining = 0;
@@ -3465,6 +3473,10 @@ public class DruidDataSource extends DruidAbstractDataSource
             }
             keepAliveCheckCount += keepAliveCount;
 
+            /**
+             * 这里很有意思，只有keepAlive为true时，才可能会把needFill设置为true，执行后面为连接池填充新连接的操作，以保证连接池中的连接个数 >= minIdle
+             * 这算是开始keepAlive的另一个buff
+             */
             if (keepAlive && poolingCount + activeCount < minIdle) {
                 needFill = true;
             }
@@ -3483,6 +3495,7 @@ public class DruidDataSource extends DruidAbstractDataSource
             Arrays.fill(evictConnections, null);
         }
 
+        // 待检测连接 > 0 时， 对其进行可用性检测，检测重新放入connections容器尾部，反之关闭
         if (keepAliveCount > 0) {
             // keep order
             for (int i = keepAliveCount - 1; i >= 0; --i) {
@@ -3558,6 +3571,7 @@ public class DruidDataSource extends DruidAbstractDataSource
             Arrays.fill(keepAliveConnections, null);
         }
 
+        // needFill为true时，执行为连接池填充新连接的操作，以保证连接池中的连接个数 >= minIdle
         if (needFill) {
             lock.lock();
             try {
