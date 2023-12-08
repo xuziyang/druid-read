@@ -114,10 +114,14 @@ public class DruidDataSource extends DruidAbstractDataSource
     private volatile long discardCount;
     private int notEmptyWaitThreadCount;
     private int notEmptyWaitThreadPeak;
-    //
+
+    /** 存放待关闭连接的容器，在连接池瘦身时会用到，具体看 {@link com.alibaba.druid.pool.DruidDataSource#shrink(boolean,boolean)} */
     private DruidConnectionHolder[] evictConnections;
+    /** 存放待可用性监测连接的容器，在连接池瘦身时会用到，具体看 {@link com.alibaba.druid.pool.DruidDataSource#shrink(boolean,boolean)} */
     private DruidConnectionHolder[] keepAliveConnections;
+    /** 标识connections容器中的相同下标的连接是否要被移除， 在连接池瘦身时会用到，具体看 {@link com.alibaba.druid.pool.DruidDataSource#shrink(boolean,boolean)} */
     private boolean[] connectionsFlag;
+    /** 在连接池瘦身时会用,做可用空闲连接的临时存储，具体看 {@link com.alibaba.druid.pool.DruidDataSource#shrink(boolean,boolean)} */
     private volatile DruidConnectionHolder[] shrinkBuffer;
 
     // threads
@@ -159,6 +163,8 @@ public class DruidDataSource extends DruidAbstractDataSource
     protected boolean checkExecuteTime;
 
     private static List<Filter> autoFilters;
+
+    // 是否跳过使用java的SPI机制加载filter, 默认false
     private boolean loadSpifilterSkip;
     private volatile DataSourceDisableException disableException;
 
@@ -2183,6 +2189,7 @@ public class DruidDataSource extends DruidAbstractDataSource
                 return;
             }
 
+            //
             if (testOnReturn) {
                 boolean validated = testConnectionInternal(holder, physicalConnection);
                 if (!validated) {
@@ -3202,7 +3209,7 @@ public class DruidDataSource extends DruidAbstractDataSource
 
     /**
      * 主要逻辑：
-     *      扫描activeConnections集合，关闭使用时间超过removeAbandonedTimeoutMillis(默认5分钟)的连接，
+     *      扫描activeConnections集合，回收使用时间超过removeAbandonedTimeoutMillis(默认5分钟)的连接，
      */
     public int removeAbandoned() {
         int removeCount = 0;
@@ -3222,7 +3229,7 @@ public class DruidDataSource extends DruidAbstractDataSource
                     continue;
                 }
 
-                long timeMillis = (currrentNanos - pooledConnection.getConnectedTimeNano()) / (1000 * 1000);
+                long timeMillis = (currrentNanos - pooledConnection.getConnectedTimeNano()) / (100 * 1000);
 
                 if (timeMillis >= removeAbandonedTimeoutMillis) {
                     iter.remove();

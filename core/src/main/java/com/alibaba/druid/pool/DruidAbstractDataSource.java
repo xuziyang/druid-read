@@ -109,9 +109,9 @@ public abstract class DruidAbstractDataSource extends WrapperAdapter implements 
 
     protected volatile String validationQuery = DEFAULT_VALIDATION_QUERY;
     protected volatile int validationQueryTimeout = -1;
-    protected volatile boolean testOnBorrow = DEFAULT_TEST_ON_BORROW;
-    protected volatile boolean testOnReturn = DEFAULT_TEST_ON_RETURN;
-    protected volatile boolean testWhileIdle = DEFAULT_WHILE_IDLE;
+    protected volatile boolean testOnBorrow = DEFAULT_TEST_ON_BORROW;  // 在取出链接时，是否进行连接可用性测试，默认不开启
+    protected volatile boolean testOnReturn = DEFAULT_TEST_ON_RETURN;  // 在回收连接时，是否进行连接可用性测试，默认不开启
+    protected volatile boolean testWhileIdle = DEFAULT_WHILE_IDLE; // 在闲置时间超出指定时间（timeBetweenEvictionRunsMillis,默认60s）后进行连接可用性测试, 默认不开启
     protected volatile boolean poolPreparedStatements;
     protected volatile boolean sharePreparedStatements;
     protected volatile int maxPoolPreparedStatementPerConnectionSize = 10;
@@ -140,15 +140,25 @@ public abstract class DruidAbstractDataSource extends WrapperAdapter implements 
     protected volatile int maxWaitThreadCount = -1;
     protected volatile boolean accessToUnderlyingConnectionAllowed = true;
 
+    //默认60s，一个连接闲置时间超出该值，且设置了testWhileIdle为true时，从连接池中取出连接时，进行连接可用性测试
     protected volatile long timeBetweenEvictionRunsMillis = DEFAULT_TIME_BETWEEN_EVICTION_RUNS_MILLIS;
     protected volatile int numTestsPerEvictionRun = DEFAULT_NUM_TESTS_PER_EVICTION_RUN;
+    // 默认30分钟，当线程池中的连接 > minIdle时,destroy守护线程会关闭 空闲时间超过该值的多余连接
     protected volatile long minEvictableIdleTimeMillis = DEFAULT_MIN_EVICTABLE_IDLE_TIME_MILLIS;
+    // 默认7小时，一个闲置连接超过该值，destroy守护线程会直接将其关闭
     protected volatile long maxEvictableIdleTimeMillis = DEFAULT_MAX_EVICTABLE_IDLE_TIME_MILLIS;
+
+    //默认120s，一个连接闲置时间超过该值，且设置了keepAlive为true时，destroy守护线程会进行连接可用性测试
     protected volatile long keepAliveBetweenTimeMillis = DEFAULT_TIME_BETWEEN_EVICTION_RUNS_MILLIS * 2;
     protected volatile long phyTimeoutMillis = DEFAULT_PHY_TIMEOUT_MILLIS;
+
+    // 一个物理连接最大的使用次数，默认-1表示无限制
     protected volatile long phyMaxUseCount = -1;
 
+    // 默认false，是否主动回收一些被拿出去使用长久没有归还的连接
     protected volatile boolean removeAbandoned;
+
+    // 当removeAbandoned为true时，强制回收使用时间超过removeAbandonedTimeoutMillis(默认5分钟)的连接
     protected volatile long removeAbandonedTimeoutMillis = 300 * 1000;
     protected volatile boolean logAbandoned;
 
@@ -1712,6 +1722,9 @@ public abstract class DruidAbstractDataSource extends WrapperAdapter implements 
         return conn;
     }
 
+    /**
+     * 在这里会真正创建物理连接
+     */
     public PhysicalConnectionInfo createPhysicalConnection() throws SQLException {
         String url = this.getUrl();
         Properties connectProperties = getConnectProperties();
