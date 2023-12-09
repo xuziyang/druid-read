@@ -100,10 +100,15 @@ public abstract class DruidAbstractDataSource extends WrapperAdapter implements 
     protected volatile PasswordCallback passwordCallback;
     protected volatile NameCallback userCallback;
 
+    // 初始化连接池时需要预先生成的连接对象个数, 默认值为0
     protected volatile int initialSize = DEFAULT_INITIAL_SIZE;
+    // 连接池中最大连接数, 默认 8
     protected volatile int maxActive = DEFAULT_MAX_ACTIVE_SIZE;
+    // 池内最小闲置连接数, 默认 0
     protected volatile int minIdle = DEFAULT_MIN_IDLE;
+    // 已废弃，没有任何作用
     protected volatile int maxIdle = DEFAULT_MAX_IDLE;
+    // 在业务线程拿不到可用连接而发生排队时，等待获取到可用连接对象的最大等待时间, 默认 -1
     protected volatile long maxWait = DEFAULT_MAX_WAIT;
     protected int notFullTimeoutRetryCount;
 
@@ -116,6 +121,7 @@ public abstract class DruidAbstractDataSource extends WrapperAdapter implements 
     protected volatile boolean sharePreparedStatements;
     protected volatile int maxPoolPreparedStatementPerConnectionSize = 10;
 
+    // 是否已被初始化过
     protected volatile boolean inited;
     protected volatile boolean initExceptionThrow = true;
 
